@@ -1,0 +1,366 @@
+<Window x:Class="DriverUpdater.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:DriverUpdater.App.ViewModels"
+        xmlns:conv="clr-namespace:DriverUpdater.App.Converters"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        Title="{Binding Title}"
+        Height="640" Width="1180" MinHeight="400" MinWidth="760"
+        WindowStartupLocation="CenterScreen" Icon="/Assets/DriverHaven.ico">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:NullToCollapsedConverter x:Key="NullToCollapsed" />
+
+        <Style x:Key="GridStyle" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+            <Setter Property="CanUserResizeRows" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="EnableRowVirtualization" Value="True" />
+            <Setter Property="EnableColumnVirtualization" Value="True" />
+        </Style>
+
+        <Style x:Key="EmptyMessage" TargetType="TextBlock">
+            <Setter Property="Margin" Value="16" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Top bar -->
+        <Border DockPanel.Dock="Top" Padding="12,10" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
+            <DockPanel LastChildFill="False">
+                <Button DockPanel.Dock="Left" Content="Scan for updates" Padding="14,6" Command="{Binding ScanCommand}"
+                        ToolTip="Scan devices, then search Windows Update for driver updates" />
+                <Button DockPanel.Dock="Left" Content="Cancel" Padding="14,6" Margin="8,0,0,0"
+                        Command="{Binding ScanCancelCommand}"
+                        Visibility="{Binding ScanCommand.IsRunning, Converter={StaticResource BoolToVisibility}}" />
+                <Button DockPanel.Dock="Left" Content="Install selected" Padding="14,6" Margin="8,0,0,0"
+                        Command="{Binding InstallSelectedCommand}"
+                        ToolTip="Create a restore point, back up the current drivers, then download and install the selected updates" />
+                <ProgressBar DockPanel.Dock="Left" Width="120" Height="6" Margin="16,0,0,0" IsIndeterminate="True"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Text="{Binding ElevationText}" />
+            </DockPanel>
+        </Border>
+
+        <!-- Sample mode banner (Debug builds started with the sample flag) -->
+        <Border DockPanel.Dock="Top" Padding="12,6" Background="#FFFFE0B2" BorderBrush="#FFE6A23C" BorderThickness="0,0,0,1"
+                Visibility="{Binding IsSampleMode, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock TextWrapping="Wrap" FontWeight="SemiBold"
+                       Text="SAMPLE MODE: the updates are made up and the restore point, backup, download, install and restart are simulated. Nothing on this PC is changed." />
+        </Border>
+
+        <!-- Status bar -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Install progress and log -->
+        <Border DockPanel.Dock="Bottom" Margin="12,0,12,8" Padding="10" BorderThickness="1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                Visibility="{Binding ShowInstallPanel, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top">
+                    <Button DockPanel.Dock="Right" Content="Hide" Padding="10,2" Margin="8,0,0,0"
+                            Command="{Binding HideInstallPanelCommand}" />
+                    <Button DockPanel.Dock="Right" Content="Cancel remaining" Padding="10,2" Margin="8,0,0,0"
+                            Command="{Binding InstallSelectedCancelCommand}"
+                            Visibility="{Binding InstallSelectedCommand.IsRunning, Converter={StaticResource BoolToVisibility}}"
+                            ToolTip="Stop after the current step. A download or install that has started always finishes." />
+                    <TextBlock Text="{Binding InstallStepText}" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <ProgressBar DockPanel.Dock="Top" Height="8" Margin="0,8" Maximum="1"
+                             Value="{Binding InstallProgressValue, Mode=OneWay}" />
+                <ListBox x:Name="InstallLogList" ItemsSource="{Binding InstallLog}" Height="120" FontFamily="Consolas" />
+            </DockPanel>
+        </Border>
+
+        <TabControl Margin="12" SelectedIndex="{Binding SelectedTabIndex}">
+            <!-- Updates available -->
+            <TabItem Header="{Binding UpdatesTabHeader}">
+                <DockPanel Margin="8">
+                    <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="10,6" Background="#FFFFF4CE"
+                            BorderBrush="#FFE0C060" BorderThickness="1"
+                            Visibility="{Binding PolicyWarning, Converter={StaticResource NullToCollapsed}}">
+                        <TextBlock Text="{Binding PolicyWarning}" TextWrapping="Wrap" />
+                    </Border>
+
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False"
+                               Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVisibility}}">
+                        <CheckBox DockPanel.Dock="Left" VerticalAlignment="Center" Content="Select all"
+                                  IsChecked="{Binding AllUpdatesSelected}" IsEnabled="{Binding IsIdle}" />
+                        <Button DockPanel.Dock="Right" Content="Hide selected" Padding="10,2" Margin="12,0,0,0"
+                                Command="{Binding HideSelectedCommand}"
+                                ToolTip="Stop Windows Update offering the selected updates. You can unhide them on the Hidden updates tab." />
+                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Text="{Binding SelectionSummary}" />
+                    </DockPanel>
+
+                    <!-- Opt-in notices from graphics card makers -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <ItemsControl ItemsSource="{Binding GpuNotices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6" Padding="10,6" BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="NewerAvailable">
+                                                        <Setter Property="Background" Value="#FFE5F1FB" />
+                                                        <Setter Property="BorderBrush" Value="#FF7EB4EA" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock TextWrapping="Wrap">
+                                            <Run Text="{Binding Message, Mode=OneWay}" />
+                                            <Hyperlink Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                       CommandParameter="{Binding Url}" ToolTip="{Binding Url}">
+                                                <Run Text="{Binding LinkText, Mode=OneWay}" />
+                                            </Hyperlink>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <CheckBox Content="Also check NVIDIA, AMD and Intel's websites for newer graphics drivers"
+                                  IsChecked="{Binding CheckGpuVendorDrivers}"
+                                  ToolTip="Off by default, because it contacts NVIDIA's servers with your graphics card's model. DriverHaven only shows a link: it never downloads or installs drivers from these websites." />
+                    </StackPanel>
+
+                    <Grid>
+                        <DataGrid Style="{StaticResource GridStyle}" ItemsSource="{Binding Updates}"
+                                  SelectionMode="Single" SelectionUnit="FullRow">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="ToolTip" Value="{Binding Details}" />
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="36" CanUserSort="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                      IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="2*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Class" Binding="{Binding DeviceClass}" Width="0.9*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Current version" Binding="{Binding CurrentVersion}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Current date" Binding="{Binding CurrentDate, StringFormat=yyyy-MM-dd}" Width="90" IsReadOnly="True" />
+                                <DataGridTextColumn Header="New version" Binding="{Binding NewVersion}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="New date" Binding="{Binding NewDate, StringFormat=yyyy-MM-dd}" Width="90" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="70" IsReadOnly="True"
+                                                    SortMemberPath="Update.MaxDownloadSize" />
+                                <DataGridTextColumn Header="Note" Binding="{Binding Note}" Width="1.3*" IsReadOnly="True" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                Visibility="{Binding ShowUpdatesMessage, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource EmptyMessage}" Text="{Binding UpdatesMessage}" />
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Hidden updates -->
+            <TabItem Header="{Binding HiddenTabHeader}">
+                <DockPanel Margin="8">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="Unhide selected" Padding="10,2" Margin="12,0,0,0"
+                                Command="{Binding UnhideSelectedCommand}" />
+                        <TextBlock DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   Text="{Binding HiddenSelectionSummary}" />
+                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="Windows Update doesn't offer hidden updates, here or anywhere else, until you unhide them." />
+                    </DockPanel>
+
+                    <Grid>
+                        <DataGrid Style="{StaticResource GridStyle}" ItemsSource="{Binding HiddenUpdates}"
+                                  SelectionMode="Single" SelectionUnit="FullRow">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="ToolTip" Value="{Binding Details}" />
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="36" CanUserSort="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                      IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="2*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Class" Binding="{Binding DeviceClass}" Width="0.9*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Current version" Binding="{Binding CurrentVersion}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Hidden version" Binding="{Binding NewVersion}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Date" Binding="{Binding NewDate, StringFormat=yyyy-MM-dd}" Width="90" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="*" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="70" IsReadOnly="True"
+                                                    SortMemberPath="Update.MaxDownloadSize" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                Visibility="{Binding ShowHiddenUpdatesMessage, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource EmptyMessage}" Text="{Binding HiddenUpdatesMessage}" />
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Update history -->
+            <TabItem Header="Update history">
+                <Grid Margin="8">
+                    <DataGrid Style="{StaticResource GridStyle}" ItemsSource="{Binding History}" IsReadOnly="True"
+                              SelectionMode="Extended">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Succeeded}" Value="False">
+                                        <Setter Property="Background" Value="#FFFDE4E4" />
+                                        <Setter Property="ToolTip" Value="{Binding ErrorMessage}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=yyyy-MM-dd HH:mm}" Width="120" />
+                            <DataGridTextColumn Header="Driver" Binding="{Binding Title}" Width="2.5*" />
+                            <DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="0.9*" />
+                            <DataGridTextColumn Header="Installed by" Binding="{Binding InstalledBy}" Width="*" />
+                            <DataGridTextColumn Header="Details" Binding="{Binding ErrorMessage}" Width="2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                            Visibility="{Binding ShowHistoryMessage, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource EmptyMessage}" Text="{Binding HistoryMessage}" />
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- Driver backups -->
+            <TabItem Header="{Binding BackupsTabHeader}">
+                <DockPanel Margin="8">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="Open backups folder" Padding="10,2" Margin="8,0,0,0"
+                                Command="{Binding OpenBackupsFolderCommand}" />
+                        <Button DockPanel.Dock="Right" Content="Restore selected driver" Padding="10,2" Margin="12,0,0,0"
+                                Command="{Binding RestoreSelectedCommand}"
+                                ToolTip="Create a restore point, then put the selected backed-up driver back on its device" />
+                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="If a new driver causes problems, select its backed-up version and restore it. A restore point is created first." />
+                    </DockPanel>
+
+                    <Grid>
+                        <DataGrid Style="{StaticResource GridStyle}" ItemsSource="{Binding Backups}" IsReadOnly="True"
+                                  SelectionMode="Single" SelectedItem="{Binding SelectedBackup}">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="ToolTip" Value="{Binding Details}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanRestore}" Value="False">
+                                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Backed up" Binding="{Binding BackedUpAt, StringFormat=yyyy-MM-dd HH:mm}" Width="120" />
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="2*" />
+                                <DataGridTextColumn Header="Backed-up version" Binding="{Binding BackedUpVersion}" Width="*" />
+                                <DataGridTextColumn Header="Driver date" Binding="{Binding BackedUpDate, StringFormat=yyyy-MM-dd}" Width="90" />
+                                <DataGridTextColumn Header="Current version" Binding="{Binding CurrentVersion}" Width="*" />
+                                <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="*" />
+                                <DataGridTextColumn Header="Note" Binding="{Binding Note}" Width="1.2*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                Visibility="{Binding ShowBackupsMessage, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource EmptyMessage}" Text="{Binding BackupsMessage}" />
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- All devices -->
+            <TabItem Header="{Binding DevicesTabHeader}">
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="Create restore point" Padding="10,4" Command="{Binding CreateRestorePointCommand}"
+                                ToolTip="Ask Windows for a System Restore point (Windows allows one every 24 hours)" />
+                        <Button Content="Back up drivers" Padding="10,4" Margin="8,0,0,0"
+                                Command="{Binding BackupDriversCommand}"
+                                CommandParameter="{Binding SelectedItems, ElementName=DevicesGrid}"
+                                ToolTip="Export the selected devices' third-party driver packages (all of them if nothing is selected)" />
+                        <Button Content="Open backups folder" Padding="10,4" Margin="8,0,0,0"
+                                Command="{Binding OpenBackupsFolderCommand}" />
+                    </StackPanel>
+
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <CheckBox DockPanel.Dock="Right" Margin="16,0,0,0" VerticalAlignment="Center"
+                                  Content="Only devices with problems" IsChecked="{Binding ShowOnlyProblemDevices}" />
+                        <TextBlock DockPanel.Dock="Left" Text="Filter:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Padding="4,3" VerticalContentAlignment="Center"
+                                 Text="{Binding DeviceFilter, UpdateSourceTrigger=PropertyChanged, Delay=150}"
+                                 ToolTip="Matches device name, class, manufacturer, provider, version, INF or hardware ID" />
+                    </DockPanel>
+
+                    <Grid>
+                        <DataGrid x:Name="DevicesGrid" Style="{StaticResource GridStyle}" ItemsSource="{Binding DevicesView}"
+                                  IsReadOnly="True" SelectionMode="Extended">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasProblem}" Value="True">
+                                            <Setter Property="Background" Value="#FFFDE4E4" />
+                                            <Setter Property="ToolTip" Value="{Binding Status}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="2.2*" />
+                                <DataGridTextColumn Header="Class" Binding="{Binding DeviceClass}" Width="*" />
+                                <DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="1.2*" />
+                                <DataGridTextColumn Header="Driver provider" Binding="{Binding DriverProvider}" Width="1.2*" />
+                                <DataGridTextColumn Header="Version" Binding="{Binding DriverVersion}" Width="*" />
+                                <DataGridTextColumn Header="Date" Binding="{Binding DriverDate, StringFormat=yyyy-MM-dd}" Width="90" />
+                                <DataGridTextColumn Header="INF" Binding="{Binding InfName}" Width="0.8*" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="1.5*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                Visibility="{Binding ShowDevicesMessage, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource EmptyMessage}" Text="{Binding DevicesMessage}" />
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

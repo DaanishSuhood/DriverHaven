@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DriverUpdater.Core\DriverUpdater.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <!-- Sample mode (made-up updates, simulated installs) is a testing aid and never ships in Release builds. -->
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <Compile Remove="Sample\**" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DriverHaven.ico</ApplicationIcon>
+    <!-- The user-facing name (see ProductInfo.Name); project and namespace names stay DriverUpdater.*. -->
+    <AssemblyName>DriverHaven</AssemblyName>
+    <AssemblyTitle>DriverHaven</AssemblyTitle>
+    <Product>DriverHaven</Product>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Regenerate with: python -I tools/icon/make_icon.py -->
+    <Resource Include="Assets\DriverHaven.ico" />
+  </ItemGroup>
+
+</Project>

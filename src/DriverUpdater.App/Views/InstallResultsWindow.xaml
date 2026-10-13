@@ -1,0 +1,47 @@
+<Window x:Class="DriverUpdater.App.Views.InstallResultsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:DriverUpdater.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:InstallResultsViewModel}"
+        Title="Install results" Height="460" Width="860" MinHeight="300" MinWidth="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
+        Icon="/Assets/DriverHaven.ico">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </Window.Resources>
+
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Heading}" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Notes}" TextWrapping="Wrap" Margin="0,8,0,12" />
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Restart now" Padding="16,6" IsDefault="True" Click="OnRestartNow"
+                    Visibility="{Binding RebootRequired, Converter={StaticResource BoolToVisibility}}" />
+            <Button x:Name="CloseButton" Content="Close" Padding="16,6" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+
+        <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal" CanUserResizeRows="False" SelectionMode="Single"
+                  HorizontalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="ToolTip" Value="{Binding Detail}" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsFailure}" Value="True">
+                            <Setter Property="Background" Value="#FFFDE4E4" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="1.4*" />
+                <DataGridTextColumn Header="Update" Binding="{Binding Update}" Width="1.6*" />
+                <DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="*" />
+                <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
